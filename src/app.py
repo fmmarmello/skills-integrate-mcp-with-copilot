@@ -5,14 +5,48 @@ Uma aplicação FastAPI bem simples que permite aos estudantes visualizar e se
 inscrever em atividades extracurriculares da Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+import json
 import os
 from pathlib import Path
 
 app = FastAPI(title="Mergington High School API",
               description="API para visualizar e se inscrever em atividades extracurriculares")
+
+BASE_DIR = Path(__file__).resolve().parent
+TEACHERS_FILE = BASE_DIR / "teachers.json"
+
+
+def load_teachers():
+    if not TEACHERS_FILE.exists():
+        return {}
+
+    with TEACHERS_FILE.open("r", encoding="utf-8") as file:
+        payload = json.load(file)
+
+    teachers = payload.get("teachers", [])
+    return {
+        entry["username"]: entry["password"]
+        for entry in teachers
+        if entry.get("username") and entry.get("password")
+    }
+
+
+def is_valid_teacher(username: str | None, password: str | None) -> bool:
+    if username is None or password is None:
+        return False
+    return load_teachers().get(username) == password
+
+
+def require_teacher_auth(username: str | None, password: str | None):
+    if not is_valid_teacher(username, password):
+        raise HTTPException(
+            status_code=403,
+            detail="Autenticação de professor necessária"
+        )
+
 
 # Monta o diretório de arquivos estáticos
 current_dir = Path(__file__).parent
@@ -88,45 +122,67 @@ def get_activities():
     return activities
 
 
+@app.post("/login")
+async def login(request: Request):
+    payload = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    username = payload.get("username") or request.query_params.get("username")
+    password = payload.get("password") or request.query_params.get("password")
+
+    if not is_valid_teacher(username, password):
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+
+    return {
+        "message": "Login realizado com sucesso",
+        "role": "teacher",
+        "username": username,
+    }
+
+
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
-    """Inscreve um estudante em uma atividade"""
-    # Valida se a atividade existe
+def signup_for_activity(
+    activity_name: str,
+    email: str,
+    username: str | None = None,
+    password: str | None = None,
+):
+    """Inscreve um estudante em uma atividade apenas quando o professor estiver autenticado."""
+    require_teacher_auth(username, password)
+
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Atividade não encontrada")
 
-    # Obtém a atividade específica
     activity = activities[activity_name]
 
-    # Valida se o estudante já não está inscrito
     if email in activity["participants"]:
         raise HTTPException(
             status_code=400,
             detail="Estudante já está inscrito"
         )
 
-    # Adiciona o estudante
     activity["participants"].append(email)
     return {"message": f"{email} inscrito em {activity_name}"}
 
 
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
-    """Cancela a inscrição de um estudante em uma atividade"""
-    # Valida se a atividade existe
+def unregister_from_activity(
+    activity_name: str,
+    email: str,
+    username: str | None = None,
+    password: str | None = None,
+):
+    """Cancela a inscrição de um estudante em uma atividade apenas quando o professor estiver autenticado."""
+    require_teacher_auth(username, password)
+
     if activity_name not in activities:
         raise HTTPException(status_code=404, detail="Atividade não encontrada")
 
-    # Obtém a atividade específica
     activity = activities[activity_name]
 
-    # Valida se o estudante está inscrito
     if email not in activity["participants"]:
         raise HTTPException(
             status_code=400,
             detail="Estudante não está inscrito nesta atividade"
         )
 
-    # Remove o estudante
     activity["participants"].remove(email)
     return {"message": f"Inscrição de {email} em {activity_name} cancelada"}
