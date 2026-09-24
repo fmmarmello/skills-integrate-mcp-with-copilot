@@ -1,0 +1,8 @@
+# Falta identidade visual da escola
+
+O site está azul, mas as cores da nossa escola são branco e verde-limão. Por favor, corrijam isso.
+
+Além disso, por que nenhum dos nossos mascotes aparece na página?
+Usem as várias opções de https://octodex.github.com/
+
+Ah, mais uma ideia: acho que ficaria muito legal se o fundo tivesse várias linhas de branch no estilo Git animando lentamente! Isso é fácil, né?
